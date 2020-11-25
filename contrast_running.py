@@ -7,8 +7,11 @@ Created on Mon Dec  9 16:39:54 2019
 """
 
 import numpy as np
+import pandas as pd
+
 import matplotlib
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from contrast_utils import shorthand, grating_params, get_cre_colors, select_peak_direction, align_to_prefDir
 from contrast_metrics import compute_error_curve
@@ -33,8 +36,8 @@ def plot_from_curve_dict(curve_dict,pass_type,area,cre,num_sessions,savepath):
     contrast_labels = ['blank','5','10','20','40','60','80']
     x_dir = [-45,0,45,90,135,180,225,270,315]
     
-    direction_labels = ['blank','-135','-90','-45','0','45','90','135','180']
-    pref_labels = ['blank','-135','-90','-45','0','45','90','135','180']
+    direction_labels = ['blank ','-135','-90','-45','0','45','90','135','180']
+    pref_labels = ['blank ','-135','-90','-45','0','45','90','135','180']
 
 
     inset_x_dir = [-45,45,135,225,315]
@@ -111,9 +114,27 @@ def plot_from_curve_dict(curve_dict,pass_type,area,cre,num_sessions,savepath):
                                 inset_x_ticks=inset_x_pref
                                 )
    
+    plot_peak_response_distribution(run_aligned_pooled_low,
+                                    stat_aligned_pooled_low,
+                                    run_aligned_pooled_high,
+                                    stat_aligned_pooled_high,
+                                    area,
+                                    cre,
+                                    'aligned',
+                                    savepath)
+    
+    plot_peak_response_distribution(run_direction_pooled_low,
+                                    stat_direction_pooled_low,
+                                    run_direction_pooled_high,
+                                    stat_direction_pooled_high,
+                                    area,
+                                    cre,
+                                    'direction',
+                                    savepath)
+    
 def plot_pooled_mat(pooled_mat,area,cre,pass_str,savepath):
     
-    max_resp=0.02
+    max_resp=80.0
     cre_colors = get_cre_colors()
     x_tick_labels = ['-135','-90','-45','0','45','90','135','180']
     
@@ -124,7 +145,13 @@ def plot_pooled_mat(pooled_mat,area,cre,pass_str,savepath):
     
     current_cmap = matplotlib.cm.get_cmap(name='RdBu_r')
     current_cmap.set_bad(color=[0.8,0.8,0.8])
-    im = ax.imshow(pooled_mat.T,vmin=-max_resp,vmax=max_resp,interpolation='nearest',aspect='auto',cmap='RdBu_r',origin='lower')
+    im = ax.imshow(pooled_mat.T,
+                   vmin=-max_resp,
+                   vmax=max_resp,
+                   interpolation='nearest',
+                   aspect='auto',
+                   cmap='RdBu_r',
+                   origin='lower')
     ax.set_xlabel('Direction (deg)',fontsize=14)
     ax.set_ylabel('Contrast (%)',fontsize=14)
     ax.set_yticks(np.arange(len(contrasts)))
@@ -132,8 +159,12 @@ def plot_pooled_mat(pooled_mat,area,cre,pass_str,savepath):
     ax.set_xticks(np.arange(len(directions)))
     ax.set_xticklabels(x_tick_labels,fontsize=10)
     ax.set_title(shorthand(cre) + ' population',fontsize=16,color=cre_colors[cre])
-    cbar = plt.colorbar(im,ax=ax,ticks=[-0.02,-0.01,0.0,0.01,0.02])
-    cbar.set_label('Mean event magnitude, blank subtracted (a.u.)', rotation=270,labelpad=15.0)
+    cbar = plt.colorbar(im,
+                        ax=ax,
+                        ticks=[-max_resp,-max_resp/2.0,0.0,max_resp/2.0,max_resp])
+    cbar.set_label('Event magnitude per second (%), blank subtracted', 
+                   rotation=270,
+                   labelpad=15.0)
     plt.savefig(savepath+shorthand(area)+'_'+shorthand(cre)+'_'+pass_str+'_summed_tuning.svg',format='svg')
     plt.close() 
     
@@ -155,20 +186,20 @@ def make_errorbars_plot_running(run_responses,
     cre_colors = get_cre_colors()
     
     if as_inset:
-        num_y_ticks = 3
+        num_y_ticks = 4
         x_tick_loc = inset_x_ticks
-        label_font_size = 22
-        tick_font_size = 17
+        label_font_size = 24
+        tick_font_size = 18
     else:
-        num_y_ticks = 5
+        num_y_ticks = 4
         x_tick_loc = x_values
-        label_font_size = 14
-        tick_font_size = 10
+        label_font_size = 15.4
+        tick_font_size = 12
     
     min_y = 0.0
-    max_y = 0.04
+    max_y = 160#0.042
     
-    y_ticks = np.linspace(min_y,max_y,num=num_y_ticks)    
+    y_ticks = np.linspace(min_y,150,num=num_y_ticks)  #np.linspace(min_y,0.04,num=num_y_ticks)    
     y_ticks = np.round(y_ticks,decimals=3)
         
     (num_cells,num_conditions) = np.shape(run_responses)
@@ -179,7 +210,7 @@ def make_errorbars_plot_running(run_responses,
     min_x = x_values[0] - 0.5 * (x_values[1] - x_values[0])
     max_x = x_values[-1] + 0.5 * (x_values[1] - x_values[0])
     
-    plt.figure(figsize=(4.2,4))
+    plt.figure(figsize=(4.62,4.4))
     ax = plt.subplot(111)
     
     ax.plot([x_values[0],x_values[-1]],
@@ -239,29 +270,174 @@ def make_errorbars_plot_running(run_responses,
         x_label = x_label+' (deg)'
     
     if not as_inset:
-        ax.set_ylabel('Mean event magnitude (a.u.)',fontsize=label_font_size)
+        ax.set_ylabel('Event magnitude per second (%)',fontsize=label_font_size)
     ax.set_xlabel(x_label,fontsize=label_font_size)
     ax.set_xticks(x_tick_loc)
     ax.set_xticklabels(x_tick_labels,fontsize=tick_font_size)
     ax.set_xlim(min_x,max_x)
     ax.set_yticks(y_ticks)
-    ax.set_yticklabels([str(x) for x in y_ticks],fontsize=tick_font_size)
+    ax.set_yticklabels([str(int(x)) for x in y_ticks],fontsize=tick_font_size)
     ax.set_ylim(min_y,max_y)
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
     if plot_type == 'contrast':
-        ax.text(x_values[4],0.9*max_y,'n = '+str(num_cells)+' ('+str(num_sessions)+')',fontsize=10,horizontalalignment='center')
+        ax.text(x_values[4],0.9*max_y,'n = '+str(num_cells)+' ('+str(num_sessions)+')',fontsize=11,horizontalalignment='center')
         if shorthand(cre)=='Sst':
-            ax.text(x_values[0],0.024,'run',fontsize=14,color=cre_colors[cre])
-            ax.text(x_values[0],0.020,'stat',fontsize=14,color=cre_colors[cre],alpha=0.5)
+            ax.text(x_values[0],max_y*0.024/0.042,'run',fontsize=label_font_size,color=cre_colors[cre])
+            ax.text(x_values[0],max_y*0.020/0.042,'stat',fontsize=label_font_size,color=cre_colors[cre],alpha=0.5)
         else:
-            ax.text(x_values[-2],0.024,'run',fontsize=14,color=cre_colors[cre])
-            ax.text(x_values[-2],0.020,'stat',fontsize=14,color=cre_colors[cre],alpha=0.5)
+            ax.text(x_values[-2],max_y*0.024/0.042,'run',fontsize=label_font_size,color=cre_colors[cre])
+            ax.text(x_values[-2],max_y*0.020/0.042,'stat',fontsize=label_font_size,color=cre_colors[cre],alpha=0.5)
             
     ax.set_aspect('auto')
     plt.tight_layout()
     plt.savefig(savepath+savename+'_'+plot_type+'_errorbars.svg',format='svg')
     plt.close()     
+
+def plot_peak_response_distribution(run_aligned_pooled_low,
+                                    stat_aligned_pooled_low,
+                                    run_aligned_pooled_high,
+                                    stat_aligned_pooled_high,
+                                    area,
+                                    cre,
+                                    savename,
+                                    savepath):
+    
+    directions,contrasts = grating_params()
+    
+    plt.figure(figsize=(7,4))
+    ax = plt.subplot(111)
+    
+    MAX_CELLS = 15000
+    
+    cre_colors = get_cre_colors()
+    
+    resp_dict = {}
+    
+    BLANK_IDX = 0
+    resp_dict = add_group_to_dict(resp_dict,run_aligned_pooled_low,BLANK_IDX,'run blank')
+    resp_dict = add_group_to_dict(resp_dict,stat_aligned_pooled_low,BLANK_IDX,'stat blank') 
+    
+    directions = [-135,-90,-45,0,45,90,135,180]
+    contrasts = [0.05,0.8]
+    for run_state in ['run','stat']:
+        for i_con, contrast in enumerate(contrasts):
+            
+            if run_state=='run' and contrast==0.05:
+                resps = run_aligned_pooled_low
+            elif run_state=='run' and contrast==0.8:
+                resps = run_aligned_pooled_high
+            elif run_state=='stat' and contrast==0.05:
+                resps = stat_aligned_pooled_low
+            else:
+                resps = stat_aligned_pooled_high
+            
+            for i_dir,direction in enumerate(directions):
+                group_name = run_state + ' ' + str(direction) + ' ' + str(int(100*contrast)) + '%'
+                resp_dict = add_group_to_dict(resp_dict,resps,1+i_dir,group_name) 
+        
+    plot_order = [('space1',''),
+                  ('run blank',''),
+                  ('stat blank',''),
+                  ('space2','')]
+    curr_space = 3 
+    for run_state in ['run','stat']:
+        for i_con, contrast in enumerate(contrasts):
+            for i_dir,direction in enumerate(directions):
+                plot_order.append((run_state + ' ' + str(direction) + ' ' + str(int(100*contrast)) + '%',''))
+            plot_order.append(('space'+str(curr_space),''))
+            curr_space += 1
+    
+    colors = ['#9f9f9f']#blanks
+    for i in range(len(plot_order)):
+        colors.append(cre_colors[cre])                    
+    cre_palette = sns.color_palette(colors)
+    
+    resp_df = pd.DataFrame(np.zeros((MAX_CELLS,3)),columns=('Response to Preferred Direction','cell_type','cre'))
+    curr_cell = 0
+    labels = []
+    x_pos = []
+    dist = []
+    dir_idx = 0
+    for line,(group,cre_name) in enumerate(plot_order):
+        if group.find('space')==-1:
+            resp_mag = resp_dict[group]
+            resp_mag = resp_mag[np.argwhere(np.isfinite(resp_mag))[:,0]]
+            num_cells = len(resp_mag)
+            resp_df['Response to Preferred Direction'][curr_cell:(curr_cell+num_cells)] = resp_mag
+            resp_df['cre'][curr_cell:(curr_cell+num_cells)] = cre_name
+            resp_df['cell_type'][curr_cell:(curr_cell+num_cells)] = group
+            curr_cell += num_cells
+            x_pos.append(line)
+            dist.append(resp_mag)
+            
+            if group.find('blank')!=-1:
+                if group.find('run')!=-1:
+                    labels.append('run')
+                else:
+                    labels.append('stat')
+            else:
+                labels.append(str(directions[dir_idx]))
+                dir_idx+=1
+                if dir_idx==len(directions):
+                    dir_idx=0
+                
+        else:
+            resp_df['Response to Preferred Direction'][curr_cell] = np.NaN
+            resp_df['cre'][curr_cell] = 'blank'
+            resp_df['cell_type'][curr_cell] = group
+            curr_cell+=1
+
+    resp_df = resp_df.drop(index=np.arange(curr_cell,MAX_CELLS))
+    
+    ax = sns.swarmplot(x='cell_type',
+                  y='Response to Preferred Direction',
+                  hue='cre',
+                  size=1.0,
+                  palette=cre_palette,
+                  data=resp_df)    
+    
+    ax.set_xticks(np.array(x_pos))
+    ax.set_xticklabels(labels,fontsize=4.5,rotation=0)
+    ax.legend_.remove()
+    
+    for i,d in enumerate(dist):
+        plot_quartiles(ax,d,x_pos[i])
+        
+    ax.set_ylim(-20,400)
+    ax.set_ylabel('Event magnitude per second (%)',fontsize=12)
+    ax.set_xlabel('Blank     run 5% contrast        run 80% contrast       stat 5% contrast       stat 80% contrast ',fontsize=9)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    plt.tight_layout()
+    plt.savefig(savepath+shorthand(area)+'_'+shorthand(cre)+'_'+savename+'_cell_response_distribution.svg',format='svg')
+    plt.close()
+
+def plot_quartiles(ax,dist,x_pos,width=0.4):
+    
+    if len(dist) > 0:
+    
+        med = get_quartile(0.5,dist)
+        low_quartile = get_quartile(0.25,dist)
+        upper_quartile = get_quartile(0.75,dist)
+        
+        ax.plot([x_pos-width,x_pos+width],[low_quartile,low_quartile],'k',alpha=0.8,linewidth=1.0)
+        ax.plot([x_pos-width,x_pos+width],[med,med],'r',alpha=0.8,linewidth=1.0)
+        ax.plot([x_pos-width,x_pos+width],[upper_quartile,upper_quartile],'k',alpha=0.8,linewidth=1.0)
+        
+        ax.plot([x_pos-width,x_pos-width],[low_quartile,upper_quartile],'k',alpha=0.8,linewidth=0.6)
+        ax.plot([x_pos+width,x_pos+width],[low_quartile,upper_quartile],'k',alpha=0.8,linewidth=0.6)
+    
+def get_quartile(frac,dist):
+    sorted_dist = np.sort(dist)
+    quartile = frac*len(dist)
+    lb = int(np.floor(quartile))
+    ub = int(np.ceil(quartile))
+    return (sorted_dist[lb] + sorted_dist[ub])/2.0 
+
+def add_group_to_dict(resp_dict,responses,condition_idx,group_name) :
+    resp_dict[group_name] = responses[:,condition_idx]
+    return resp_dict                             
 
 def populate_curve_dict(curve_dict,responses,blank,cell_idx,curve_str,peak_dir):
     
@@ -294,7 +470,7 @@ def add_to_curve_dict(curve_dict,
     else:#direction or aligned-direction
         tuning_curve = get_direction_tuning(condition_responses,blank_responses,cell_idx,contrast_regime)
     
-    if curve_dict.has_key(curve_key):
+    if curve_key in curve_dict:
         curve_dict[curve_key] = np.append(curve_dict[curve_key],tuning_curve,axis=0)
     else:
         curve_dict[curve_key] = tuning_curve

@@ -9,6 +9,7 @@ Created on Mon Dec  9 16:44:52 2019
 import os, sys
 import numpy as np
 import pandas as pd
+import h5py
 
 import simplejson
 
@@ -71,8 +72,6 @@ def align_to_prefDir(responses,peak_dir):
 def sort_by_weighted_peak_direction(condition_responses):
     
     (num_cells,num_directions) = np.shape(condition_responses)
-    
-    #TODO: clean this up
     
     weighted_resp = np.zeros((num_cells,num_directions))
     relative_pos = np.zeros((num_cells,num_directions))
@@ -146,10 +145,10 @@ def get_peak_conditions(condition_responses):
         if is_max.sum()==1:
             (direction,contrast) = np.argwhere(is_max)[0,:]
         else:
-            print str(is_max.sum())+' peaks'
+            print(str(is_max.sum())+' peaks')
             r = np.random.choice(is_max.sum())
             (direction,contrast) = np.argwhere(is_max)
-            print np.shape(direction)
+            print(np.shape(direction))
             direction = direction[r]
             contrast = contrast[r]
         peak_direction[nc] = direction
@@ -157,97 +156,165 @@ def get_peak_conditions(condition_responses):
         
     return peak_direction, peak_contrast
 
-def load_sweep_table(savepath,session_ID):  
-    return pd.read_hdf(savepath+str(session_ID)+'_contrast_analysis.h5',key='stim_table') 
+def load_sweep_table(dandiset_path,session_ID):
+    nwb_path = get_nwb_path(dandiset_path,session_ID)
+    nwb = h5py.File(nwb_path,mode='r')
+    start_times = np.array(nwb['intervals/epochs/start_time'])
+    stop_times = np.array(nwb['intervals/epochs/stop_time'])
+    contrasts = np.array(nwb['intervals/epochs/contrast'])
+    directions = np.array(nwb['intervals/epochs/direction'])
+    SFs = np.array(nwb['intervals/epochs/spatial_frequency'])
+    TFs = np.array(nwb['intervals/epochs/temporal_frequency'])
     
-def load_mean_sweep_events(savepath,session_ID):
-    valid_cells = roi_validity(session_ID,savepath)
-    mse_df = pd.read_hdf(savepath+str(session_ID)+'_contrast_analysis.h5',key='mean_sweep_events')
-    return mse_df.values[:,valid_cells]
+    df = pd.DataFrame(np.zeros((len(start_times),6)),columns=('Start','End','Contrast','Ori','SF','TF'))
+    df['Start'] = start_times
+    df['End'] = stop_times
+    df['Contrast'] = contrasts
+    df['Ori'] = directions
+    df['SF'] = SFs
+    df['TF'] = TFs
+    return df
 
-def load_mean_sweep_running(session_ID,savepath):
+def load_mean_sweep_events(dandiset_path,session_ID):
     
-    if os.path.isfile(savepath+str(session_ID)+'_mean_sweep_running.npy'):
-        mean_sweep_running = np.load(savepath+str(session_ID)+'_mean_sweep_running.npy')
+    if os.path.isfile(dandiset_path+str(session_ID)+'_mean_sweep_events.npy'):
+        mse = np.load(dandiset_path+str(session_ID)+'_mean_sweep_events.npy')
     else:
-        trace_path = savepath+'contrast_running_speeds/'
-        dxcm = np.load(trace_path+str(session_ID)+'_running_speed.npy')
-        sweep_table = load_sweep_table(savepath,session_ID)
-        num_sweeps = len(sweep_table)
-        mean_sweep_running = np.zeros((num_sweeps,))
-        for ns in range(num_sweeps):
-            start = int(sweep_table['Start'][ns])
-            end = int(sweep_table['End'][ns])
-            mean_sweep_running[ns] = np.mean(dxcm[start:end])
-        np.save(savepath+str(session_ID)+'_mean_sweep_running.npy',mean_sweep_running)
-        
-    return mean_sweep_running
     
+        nwb_path = get_nwb_path(dandiset_path,session_ID)
+        nwb = h5py.File(nwb_path,mode='r')
+        
+        events = np.array(nwb['processing/brain_observatory_pipeline/l0_events/true_false_events/data'])
+        sweep_table = load_sweep_table(dandiset_path,session_ID)
+        
+        num_neurons = np.shape(events)[0]
+        num_sweeps = len(sweep_table)
+        
+        mse = np.zeros((num_sweeps,num_neurons))
+        for sweep in range(num_sweeps):
+            start_frame = int(sweep_table['Start'][sweep])
+            end_frame = int(sweep_table['End'][sweep])
+            mse[sweep] = np.mean(events[:,start_frame:end_frame],axis=1)
+            
+        np.save(dandiset_path+str(session_ID)+'_mean_sweep_events.npy',mse)
+        
+    duplicate_cells = roi_duplications(session_ID,dandiset_path)
+    if duplicate_cells is not None:
+        unique_cells = np.argwhere(~duplicate_cells)[:,0]
+        mse = mse[:,unique_cells]
+    
+    return mse
+    
+def load_sweep_events(dandiset_path,session_ID,stim_frames=60,pre_frames=30):
+    
+    if os.path.isfile(dandiset_path+str(session_ID)+'_sweep_events.npy'):
+        se = np.load(dandiset_path+str(session_ID)+'_sweep_events.npy')
+    else:
+    
+        nwb_path = get_nwb_path(dandiset_path,session_ID)
+        nwb = h5py.File(nwb_path,mode='r')
+        
+        events = np.array(nwb['processing/brain_observatory_pipeline/l0_events/true_false_events/data'])
+        sweep_table = load_sweep_table(dandiset_path,session_ID)
+        
+        num_neurons = np.shape(events)[0]
+        num_sweeps = len(sweep_table)
+        num_sweep_frames = pre_frames+stim_frames
+        
+        se = np.zeros((num_sweeps,num_neurons,num_sweep_frames))
+        for sweep in range(num_sweeps):
+            start_frame = int(sweep_table['Start'][sweep])
+            end_frame = start_frame+stim_frames
+            se[sweep] = events[:,(start_frame-pre_frames):end_frame]
+            
+        np.save(dandiset_path+str(session_ID)+'_sweep_events.npy',se)
+        
+    duplicate_cells = roi_duplications(session_ID,dandiset_path)
+    if duplicate_cells is not None:
+        unique_cells = np.argwhere(~duplicate_cells)[:,0]
+        se = se[:,unique_cells]
+    
+    return se
+
+def load_mean_sweep_running(session_ID,dandiset_path):
+    
+    if os.path.isfile(dandiset_path+str(session_ID)+'_mean_sweep_running.npy'):
+        msr = np.load(dandiset_path+str(session_ID)+'_mean_sweep_running.npy')
+    else:
+    
+        nwb_path = get_nwb_path(dandiset_path,session_ID)
+        nwb = h5py.File(nwb_path,mode='r')
+        
+        running = np.array(nwb['processing/brain_observatory_pipeline/RunningBehavior/running_speed/data'])
+        sweep_table = load_sweep_table(dandiset_path,session_ID)
+        
+        num_sweeps = len(sweep_table)
+        
+        msr = np.zeros((num_sweeps,))
+        for sweep in range(num_sweeps):
+            start_frame = int(sweep_table['Start'][sweep])
+            end_frame = int(sweep_table['End'][sweep])
+            msr[sweep] = np.mean(running[start_frame:end_frame])
+            
+        np.save(dandiset_path+str(session_ID)+'_mean_sweep_running.npy',msr)
+    
+    return msr
+
+def load_dff_traces(dandiset_path,session_ID):
+    
+    nwb_path = get_nwb_path(dandiset_path,session_ID)
+    nwb = h5py.File(nwb_path,mode='r')
+    
+    dff = np.array(nwb['processing/brain_observatory_pipeline/Fluorescence/DfOverF/data'])
+        
+    duplicate_cells = roi_duplications(session_ID,dandiset_path)
+    if duplicate_cells is not None:
+        unique_cells = np.argwhere(~duplicate_cells)[:,0]
+        dff = dff[unique_cells]
+    
+    return dff
+
+def get_nwb_path(dandiset_path,session_ID):
+    for sess in os.listdir(dandiset_path):
+        session_path = os.path.join(dandiset_path,sess)
+        if os.path.isdir(session_path):
+            for f in os.listdir(session_path):
+                if f.find(str(session_ID))!=-1 and f.find('.nwb')!=-1:
+                    return os.path.join(session_path,f)
+    return None
+
 def get_sessions(df,area,cre):
 
     is_area = df['targeted_structure'] == area
     is_cre = df['genotype_name'] == cre
-    session_ids = df['ophys_session_id'][is_area&is_cre]
+    session_ids = df['ophys_session_id'][is_area&is_cre].astype(np.int)
 
     return np.unique(session_ids)
     
 def get_analysis_QCd(savepath):
     
     manifest = pd.read_csv(savepath+'targeted_manifest.csv')
-    manifest.drop(columns=('Unnamed: 0'))
+    manifest = manifest.drop(columns=('Unnamed: 0'))
     manifest = manifest.drop_duplicates(subset=('ophys_session_id'))
     
     return manifest
+
+def roi_duplications(session_ID,savepath):
     
-def roi_validity(session_ID,savepath):
-    
-    if os.path.isfile(savepath+str(session_ID)+'_ROI_validity.npy'):
-        is_valid = np.load(savepath+str(session_ID)+'_ROI_validity.npy')
+    duplicate_cells = pd.read_csv(savepath+'duplicate_rois.csv')
+    is_session = duplicate_cells['session_ID'].values == session_ID
+    session_idx = np.argwhere(is_session)[:,0]
+    if len(session_idx)>0:
+        return duplicate_cells['is_duplicate'].values[session_idx]
     else:
-        roi_df = pd.read_csv(savepath+'roi.csv')
-        csids = input_json_csids(session_ID,savepath)
-        
-        is_valid = np.zeros((len(csids),),dtype=np.bool)
-        for i_cell,csid in enumerate(csids):
-            rows = np.argwhere(roi_df['id']==csid)[:,0]
-            is_valid[i_cell] = roi_df['valid'][rows[0]]
-            
-        np.save(savepath+str(session_ID)+'_ROI_validity.npy',is_valid)
-            
-    #some sessions have ROIs missing in analysis.h5 due to nans in trace:
-    if os.path.isfile(savepath+str(session_ID)+'_has_nans.npy'):
-        print 'Session ' + str(session_ID) + ' nans taken into account.'
-        has_nans = np.load(savepath+str(session_ID)+'_has_nans.npy')
-        is_valid = is_valid[~has_nans]
-    
-    return is_valid
-    
-def input_json_csids(session_ID,savepath):
-    
-    json_path = get_json_filepath(session_ID,savepath+'targeted_contrast_jsons/')
-    
-    if json_path is not None:
-        f = open(json_path)
-        json = simplejson.load(f)
-        rois = json['rois']
-        csids = np.zeros((len(rois),))
-        for i,roi in enumerate(rois):
-            csids[i] = roi['id']
-        f.close()
-    else:
-        print 'JSON not found for session ' + str(session_ID)
-        sys.exit()
-        
-    return csids
-    
-def get_json_filepath(session_ID,directory):
-    
-    json_path = None
-    for f in os.listdir(directory):
-        if f.find(str(session_ID))!=-1 and f.find('_input_extract_traces.json')!=-1:
-            json_path = directory+f
-        
-    return json_path
+        return None
+
+#def roi_duplications(session_ID,savepath):
+#    
+#    if os.path.isfile(savepath+str(session_ID)+'_duplicate_cells.npy'):
+#        print('Session ' + str(session_ID) + ' duplicate cells taken into account.')
+#        return np.load(savepath+str(session_ID)+'_duplicate_cells.npy')
+#    return None
 
 def shorthand(name):
     

@@ -301,7 +301,7 @@ def pool_sessions(session_IDs,pool_name,savepath,scale='blank_subtracted_NLL'):
     
     else:
         
-        print 'Pooling sessions for ' + pool_name
+        print('Pooling sessions for ' + pool_name)
         
         directions, contrasts = grating_params()
         
@@ -312,7 +312,7 @@ def pool_sessions(session_IDs,pool_name,savepath,scale='blank_subtracted_NLL'):
         curr_cell = 0
         for session_ID in session_IDs:
             
-            print str(session_ID)
+            print(str(session_ID))
             
             mse = load_mean_sweep_events(savepath,session_ID)
             sweep_table = load_sweep_table(savepath,session_ID)
@@ -339,7 +339,7 @@ def pool_sessions(session_IDs,pool_name,savepath,scale='blank_subtracted_NLL'):
         np.save(savepath+pool_name+'_blank_responses_'+scale+'.npy',pooled_blank_responses)
         np.save(savepath+pool_name+'_chisq_all.npy',p_vals_all)
     
-        print 'Done.'
+        print('Done.')
     
     return pooled_condition_responses, pooled_blank_responses, p_vals_all
 
